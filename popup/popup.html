@@ -1,0 +1,99 @@
+<!-- Main popup structure -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Market Shopper</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <!-- Header -->
+  <div class="popup-header">
+    <div class="logo">
+      <div class="logo-icon">M</div>
+    </div>
+    <span class="logo-text">Market Shopper</span>
+  </div>
+
+  <!-- Quick Actions Section -->
+  <div class="section">
+    <div class="section-title">QUICK ACTIONS</div>
+    
+    <button class="action-btn primary" id="captureBtn">
+      <div class="btn-icon">
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="2" y="3" width="12" height="9" rx="1" stroke="currentColor" stroke-width="1.5" fill="none"/>
+          <line x1="5" y1="6" x2="11" y2="6" stroke="currentColor" stroke-width="1.5"/>
+          <line x1="5" y1="8" x2="11" y2="8" stroke="currentColor" stroke-width="1.5"/>
+          <line x1="5" y1="10" x2="9" y2="10" stroke="currentColor" stroke-width="1.5"/>
+          <circle cx="12" cy="5" r="1.5" fill="currentColor"/>
+        </svg>
+      </div>
+      <span>Capture Screenshot</span>
+    </button>
+
+    <button class="action-btn" id="uploadBtn">
+      <div class="btn-icon">
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M8 2 L8 10 M4 6 L8 2 L12 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <rect x="2" y="11" width="12" height="3" rx="1" stroke="currentColor" stroke-width="1.5" fill="none"/>
+        </svg>
+      </div>
+      <span>Upload Image</span>
+      <input type="file" id="fileInput" accept="image/*" style="display: none;">
+    </button>
+
+    <div class="search-box">
+      <div class="search-icon">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.5" fill="none"/>
+          <line x1="11" y1="11" x2="14" y2="14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <input type="text" id="quickSearch" placeholder="Quick search product...">
+    </div>
+  </div>
+
+  <!-- Recent Activity Section -->
+  <div class="section">
+    <div class="section-title">RECENT ACTIVITY</div>
+    <div id="recentSearches" class="recent-list">
+      <div class="empty-state">No recent searches</div>
+    </div>
+  </div>
+
+  <!-- Status Section -->
+  <div class="section">
+    <div class="section-title">STATUS</div>
+    <div class="status-grid">
+      <div class="status-item">
+        <div class="status-icon">📊</div>
+        <div class="status-info">
+          <div class="status-label">Tracked</div>
+          <div class="status-value" id="trackedCount">0</div>
+        </div>
+      </div>
+      <div class="status-item">
+        <div class="status-icon">🎁</div>
+        <div class="status-info">
+          <div class="status-label">Deals</div>
+          <div class="status-value" id="dealsCount">0</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Navigation Section -->
+  <div class="section">
+    <button class="nav-btn" id="openSidePanelBtn">
+      <span>Open Side Panel</span>
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M6 4 L10 8 L6 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

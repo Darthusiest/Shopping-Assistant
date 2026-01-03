@@ -28,7 +28,8 @@
     }
   ],
   "action": {
-    "default_title": "Open Market Shopper",
+    "default_popup": "popup/popup.html",
+    "default_title": "Market Shopper",
     "default_icon": {
       "16": "assets/icon16.png",
       "48": "assets/icon48.png",
@@ -49,4 +50,5 @@
       "matches": ["<all_urls>"]
     }
   ]
+
 }
