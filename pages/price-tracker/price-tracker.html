@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Price Tracker - Market Shopper</title>
+    <link rel="stylesheet" href="price-tracker.css">
+</head>
+<body>
+    <div class="price-tracker-container">
+        <!-- Header -->
+        <div class="page-header">
+            <div class="header-content">
+                <h1>Price Tracker</h1>
+                <p class="subtitle">Monitor product prices and get alerts when they drop</p>
+            </div>
+            <button class="primary-btn" id="addProductBtn">
+                <svg width="18" height="18" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <line x1="8" y1="2" x2="8" y2="14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <line x1="2" y1="8" x2="14" y2="8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                <span>Add Product</span>
+            </button>
+        </div>
+
+        <!-- Search/Filter Bar -->
+        <div class="filter-bar">
+            <div class="search-box">
+                <svg width="18" height="18" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                    <line x1="11" y1="11" x2="14" y2="14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+                <input type="text" id="searchInput" placeholder="Search tracked products...">
+            </div>
+            <div class="filter-buttons">
+                <button class="filter-btn active" data-filter="all">All</button>
+                <button class="filter-btn" data-filter="active">Active</button>
+                <button class="filter-btn" data-filter="alert">Price Alerts</button>
+                <button class="filter-btn" data-filter="dropped">Price Dropped</button>
+            </div>
+        </div>
+
+        <!-- Stats Summary -->
+        <div class="stats-summary">
+            <div class="stat-item">
+                <div class="stat-label">Total Tracked</div>
+                <div class="stat-value" id="totalTracked">0</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Price Drops</div>
+                <div class="stat-value price-drop" id="priceDrops">0</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Active Alerts</div>
+                <div class="stat-value price-alert" id="activeAlerts">0</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Avg. Savings</div>
+                <div class="stat-value savings" id="avgSavings">$0</div>
+            </div>
+        </div>
+
+        <!-- Tracked Products List -->
+        <div class="products-section">
+            <div class="section-header">
+                <h2>Tracked Products</h2>
+                <div class="view-toggle">
+                    <button class="view-btn active" data-view="grid" id="gridViewBtn">
+                        <svg width="18" height="18" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="2" y="2" width="5" height="5" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                            <rect x="9" y="2" width="5" height="5" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                            <rect x="2" y="9" width="5" height="5" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                            <rect x="9" y="9" width="5" height="5" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                        </svg>
+                    </button>
+                    <button class="view-btn" data-view="list" id="listViewBtn">
+                        <svg width="18" height="18" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <line x1="2" y1="3" x2="14" y2="3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                            <line x1="2" y1="8" x2="14" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                            <line x1="2" y1="13" x2="14" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="products-container" id="productsContainer">
+                <div class="empty-state">
+                    <div class="empty-icon">📊</div>
+                    <h3>No products tracked yet</h3>
+                    <p>Start tracking products to monitor their prices and get alerts when prices drop.</p>
+                    <button class="primary-btn" id="emptyStateAddBtn">
+                        <svg width="18" height="18" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <line x1="8" y1="2" x2="8" y2="14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            <line x1="2" y1="8" x2="14" y2="8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                        <span>Add Your First Product</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Product Modal -->
+    <div class="modal-overlay" id="addProductModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Add Product to Track</h2>
+                <button class="close-btn" id="closeModalBtn">
+                    <svg width="20" height="20" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <line x1="4" y1="4" x2="12" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        <line x1="12" y1="4" x2="4" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="addProductForm">
+                    <div class="form-group">
+                        <label for="productName">Product Name *</label>
+                        <input type="text" id="productName" placeholder="Enter product name" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="productUrl">Product URL</label>
+                        <input type="url" id="productUrl" placeholder="https://example.com/product">
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="currentPrice">Current Price *</label>
+                            <input type="number" id="currentPrice" step="0.01" placeholder="0.00" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="targetPrice">Target Price (Alert)</label>
+                            <input type="number" id="targetPrice" step="0.01" placeholder="0.00">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="productImage">Product Image URL</label>
+                        <input type="url" id="productImage" placeholder="https://example.com/image.jpg">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="productNotes">Notes</label>
+                        <textarea id="productNotes" rows="3" placeholder="Add any notes about this product..."></textarea>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="button" class="secondary-btn" id="cancelBtn">Cancel</button>
+                        <button type="submit" class="primary-btn">Add Product</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Product Detail Modal -->
+    <div class="modal-overlay hidden" id="productDetailModal">
+        <div class="modal-content large">
+            <div class="modal-header">
+                <h2 id="detailProductName">Product Details</h2>
+                <button class="close-btn" id="closeDetailModalBtn">
+                    <svg width="20" height="20" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <line x1="4" y1="4" x2="12" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        <line x1="12" y1="4" x2="4" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body" id="productDetailContent">
+                <!-- Product details will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <script src="price-tracker.js"></script>
+</body>
+</html>
+
