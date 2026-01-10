@@ -45,7 +45,9 @@
     {
       "resources": [
         "assets/*",
-        "sidePanel/*"
+        "sidePanel/*",
+        "pages/*",
+        "pages/**/*"
       ],
       "matches": ["<all_urls>"]
     }
