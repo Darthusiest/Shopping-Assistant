@@ -15,6 +15,16 @@ document.addEventListener('DOMContentLoaded', () => {
   initializeShoppingLists();
 });
 
+// Listen for messages from parent (side panel navigation)
+window.addEventListener('message', (event) => {
+  // Handle filter changes from navigation
+  if (event.data && event.data.type === 'pageReady' && event.data.pageType === 'shopping-lists') {
+    if (event.data.filter) {
+      setActiveFilter(event.data.filter);
+    }
+  }
+});
+
 // Initialize all shopping lists functionality
 function initializeShoppingLists() {
   setupEventListeners();

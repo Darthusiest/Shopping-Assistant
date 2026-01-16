@@ -6,6 +6,7 @@ const pageRoutes = {
     'wishlist': 'pages/wishlist/wishlist.html',
     'history': 'pages/history/history.html',
     'settings': 'pages/settings/settings.html',
+    'shopping-lists': 'pages/shopping-lists/shopping-lists.html',
     'shopping-lists-all': 'pages/shopping-lists/shopping-lists.html',
     'shopping-lists-saved': 'pages/shopping-lists/shopping-lists.html',
     'shopping-lists-active': 'pages/shopping-lists/shopping-lists.html'
@@ -14,31 +15,106 @@ const pageRoutes = {
 // Get page frame element
 const pageFrame = document.getElementById('pageFrame');
 
-// Function to load a page
+// Page cache to avoid reloading
+const pageCache = new Map();
+let currentPageName = null;
+
+// Function to load a page with loading state and caching
 function loadPage(pageName) {
+    // Don't reload if already on this page (unless it's a shopping list filter change)
+    if (currentPageName === pageName && pageFrame && pageFrame.src && !pageName.startsWith('shopping-lists-')) {
+        return;
+    }
+
     const pagePath = pageRoutes[pageName];
-    if (pagePath && pageFrame) {
-        // Use chrome.runtime.getURL() for proper extension URL
-        const fullUrl = chrome.runtime.getURL(pagePath);
-        pageFrame.src = fullUrl;
-        
-        // Handle iframe load errors
-        pageFrame.onload = () => {
-            console.log(`Page loaded: ${pageName}`);
-        };
-        
-        pageFrame.onerror = () => {
-            console.warn(`Page ${pageName} not found, loading dashboard`);
-            if (pageName !== 'dashboard') {
-                loadPage('dashboard');
-            }
-        };
-    } else {
+    if (!pagePath || !pageFrame) {
         console.warn(`Page route not found for: ${pageName}`);
-        // Fallback to dashboard if page not found
         if (pageName !== 'dashboard') {
             loadPage('dashboard');
         }
+        return;
+    }
+
+    // Show loading indicator
+    showLoadingIndicator();
+
+    // Use chrome.runtime.getURL() for proper extension URL
+    const fullUrl = chrome.runtime.getURL(pagePath);
+    
+    // Set src - this will trigger load
+    pageFrame.src = fullUrl;
+    currentPageName = pageName;
+
+    // Handle iframe load
+    pageFrame.onload = () => {
+        hideLoadingIndicator();
+        console.log(`Page loaded: ${pageName}`);
+        
+        // Cache the page
+        pageCache.set(pageName, true);
+        
+        // Post message to page when it loads to optimize communication
+        try {
+            const message = { type: 'pageReady' };
+            
+            // If it's a shopping list page, include filter information
+            if (pageName.startsWith('shopping-lists')) {
+                const filter = pageName === 'shopping-lists-all' ? 'all' :
+                              pageName === 'shopping-lists-active' ? 'active' :
+                              pageName === 'shopping-lists-saved' ? 'saved' : 'all';
+                message.filter = filter;
+                message.pageType = 'shopping-lists';
+            }
+            
+            pageFrame.contentWindow.postMessage(message, '*');
+        } catch (e) {
+            // Cross-origin or not ready
+        }
+    };
+    
+    // Handle iframe load errors
+    pageFrame.onerror = () => {
+        hideLoadingIndicator();
+        console.warn(`Page ${pageName} not found, loading dashboard`);
+        if (pageName !== 'dashboard') {
+            loadPage('dashboard');
+        }
+    };
+
+    // Timeout fallback if page doesn't load within 3 seconds
+    setTimeout(() => {
+        if (pageFrame.src === fullUrl && !pageCache.has(pageName)) {
+            hideLoadingIndicator();
+        }
+    }, 3000);
+}
+
+// Show loading indicator
+function showLoadingIndicator() {
+    let loader = document.getElementById('pageLoader');
+    if (!loader) {
+        loader = document.createElement('div');
+        loader.id = 'pageLoader';
+        loader.className = 'page-loader';
+        loader.innerHTML = `
+            <div class="loader-content">
+                <div class="loader-spinner"></div>
+                <div class="loader-text">Loading...</div>
+            </div>
+        `;
+        const contentArea = document.querySelector('.content-area');
+        if (contentArea) {
+            contentArea.appendChild(loader);
+        }
+    }
+    loader.classList.remove('hidden');
+}
+
+// Hide loading indicator
+function hideLoadingIndicator() {
+    const loader = document.getElementById('pageLoader');
+    if (loader) {
+        loader.classList.add('hidden');
     }
 }
 
@@ -77,13 +153,48 @@ document.querySelectorAll('.menu-item.expandable').forEach(item => {
         // Don't toggle if clicking on badge
         if (e.target.classList.contains('badge')) return;
         
+        // Check if it has a data-page attribute (should navigate)
+        const pageName = this.getAttribute('data-page');
         const submenu = this.nextElementSibling;
-        if (submenu && submenu.classList.contains('submenu')) {
-            submenu.classList.toggle('hidden');
-            this.classList.toggle('expanded');
-            const expandIcon = this.querySelector('.expand-icon');
-            if (expandIcon) {
-                expandIcon.textContent = submenu.classList.contains('hidden') ? '▼' : '▲';
+        
+        // If clicking on the expand icon area, just toggle submenu
+        if (e.target.closest('.expand-icon')) {
+            if (submenu && submenu.classList.contains('submenu')) {
+                submenu.classList.toggle('hidden');
+                this.classList.toggle('expanded');
+                const expandIcon = this.querySelector('.expand-icon');
+                if (expandIcon) {
+                    expandIcon.textContent = submenu.classList.contains('hidden') ? '▼' : '▲';
+                }
+            }
+        } else if (pageName) {
+            // If it has a page, navigate to it (and expand submenu)
+            if (submenu && submenu.classList.contains('submenu')) {
+                submenu.classList.remove('hidden');
+                this.classList.add('expanded');
+                const expandIcon = this.querySelector('.expand-icon');
+                if (expandIcon) {
+                    expandIcon.textContent = '▲';
+                }
+            }
+            
+            // Update active state
+            document.querySelectorAll('.menu-item').forEach(i => i.classList.remove('active'));
+            this.classList.add('active');
+            
+            // Load the page
+            requestAnimationFrame(() => {
+                loadPage(pageName);
+            });
+        } else {
+            // Just toggle submenu if no page
+            if (submenu && submenu.classList.contains('submenu')) {
+                submenu.classList.toggle('hidden');
+                this.classList.toggle('expanded');
+                const expandIcon = this.querySelector('.expand-icon');
+                if (expandIcon) {
+                    expandIcon.textContent = submenu.classList.contains('hidden') ? '▼' : '▲';
+                }
             }
         }
     });
@@ -96,16 +207,18 @@ document.querySelectorAll('.menu-item:not(.expandable)').forEach(item => {
         if (e.target.classList.contains('badge')) return;
         
         const pageName = this.getAttribute('data-page');
-        if (pageName) {
-            // Update active state
+        if (pageName && currentPageName !== pageName) {
+            // Update active state immediately for instant feedback
             document.querySelectorAll('.menu-item').forEach(i => i.classList.remove('active'));
             this.classList.add('active');
             
-            // Load the page
-            loadPage(pageName);
+            // Use requestAnimationFrame for smooth transition
+            requestAnimationFrame(() => {
+                loadPage(pageName);
+            });
         }
     });
-});
+}, { passive: true });
 
 // Handle submenu item selection and navigation
 document.querySelectorAll('.submenu-item').forEach(item => {
@@ -119,12 +232,25 @@ document.querySelectorAll('.submenu-item').forEach(item => {
         if (parentMenuItem) {
             document.querySelectorAll('.menu-item').forEach(i => i.classList.remove('active'));
             parentMenuItem.classList.add('active');
+            
+            // Expand the submenu if not already expanded
+            const submenu = parentMenuItem.nextElementSibling;
+            if (submenu && submenu.classList.contains('submenu')) {
+                submenu.classList.remove('hidden');
+                parentMenuItem.classList.add('expanded');
+                const expandIcon = parentMenuItem.querySelector('.expand-icon');
+                if (expandIcon) {
+                    expandIcon.textContent = '▲';
+                }
+            }
         }
         
         // Load the page
         const pageName = this.getAttribute('data-page');
         if (pageName) {
-            loadPage(pageName);
+            requestAnimationFrame(() => {
+                loadPage(pageName);
+            });
         }
     });
 });

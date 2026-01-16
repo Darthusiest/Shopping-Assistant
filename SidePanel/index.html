@@ -35,7 +35,7 @@
                     <span>Dashboard</span>
                 </div>
                 
-                <div class="menu-item expandable">
+                <div class="menu-item expandable" data-page="shopping-lists-all">
                     <div class="menu-icon">
                         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                             <rect x="2" y="3" width="12" height="10" rx="1" stroke="currentColor" stroke-width="1.5" fill="none"/>
@@ -49,17 +49,17 @@
                     <div class="expand-icon">▼</div>
                 </div>
                 <div class="submenu hidden">
-                    <div class="submenu-item" data-page="shopping-lists-all">
+                    <div class="submenu-item" data-page="shopping-lists-all" data-filter="all">
                         <div class="submenu-dot"></div>
                         <span>All Lists</span>
                     </div>
-                    <div class="submenu-item" data-page="shopping-lists-saved">
-                        <div class="submenu-dot"></div>
-                        <span>Saved</span>
-                    </div>
-                    <div class="submenu-item" data-page="shopping-lists-active">
+                    <div class="submenu-item" data-page="shopping-lists-active" data-filter="active">
                         <div class="submenu-dot"></div>
                         <span>Active</span>
+                    </div>
+                    <div class="submenu-item" data-page="shopping-lists-saved" data-filter="saved">
+                        <div class="submenu-dot"></div>
+                        <span>Saved</span>
                     </div>
                 </div>
                 
