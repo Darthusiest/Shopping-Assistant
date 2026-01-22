@@ -10,6 +10,7 @@ let shoppingListsMap = new Map(); // Map<listId, listObject>
 let currentFilter = 'all';
 let currentListId = null; // ID of currently viewed list
 let editingListId = null; // ID of list being edited (null for new list)
+let editingItemId = null; // ID of item being edited (null for new item)
 
 // Initialize when ready
 document.addEventListener('DOMContentLoaded', () => {
@@ -252,12 +253,47 @@ function closeListModal() {
   }
 }
 
-// Open item modal
-function openItemModal() {
+// Open item modal (for creating or editing)
+function openItemModal(itemId = null) {
+  editingItemId = itemId;
   const modal = document.getElementById('addItemModal');
-  if (modal) {
-    modal.classList.remove('hidden');
+  const modalTitle = modal?.querySelector('.modal-header h2');
+  const itemNameInput = document.getElementById('itemName');
+  const itemQuantityInput = document.getElementById('itemQuantity');
+  const itemUnitInput = document.getElementById('itemUnit');
+  const itemPriceInput = document.getElementById('itemPrice');
+  const itemNotesInput = document.getElementById('itemNotes');
+  const submitBtn = document.getElementById('submitItemBtn');
+
+  if (!modal) return;
+
+  if (itemId && currentListId) {
+    // Editing existing item
+    const list = getListById(currentListId);
+    if (list && list.items) {
+      const item = list.items.find(i => i.id === itemId);
+      if (item) {
+        if (modalTitle) modalTitle.textContent = 'Edit Item';
+        if (itemNameInput) itemNameInput.value = item.name || '';
+        if (itemQuantityInput) itemQuantityInput.value = item.quantity || 1;
+        if (itemUnitInput) itemUnitInput.value = item.unit || '';
+        if (itemPriceInput) itemPriceInput.value = item.price || '';
+        if (itemNotesInput) itemNotesInput.value = item.notes || '';
+        if (submitBtn) submitBtn.textContent = 'Save Changes';
+      }
+    }
+  } else {
+    // Creating new item
+    if (modalTitle) modalTitle.textContent = 'Add Item to List';
+    if (itemNameInput) itemNameInput.value = '';
+    if (itemQuantityInput) itemQuantityInput.value = 1;
+    if (itemUnitInput) itemUnitInput.value = '';
+    if (itemPriceInput) itemPriceInput.value = '';
+    if (itemNotesInput) itemNotesInput.value = '';
+    if (submitBtn) submitBtn.textContent = 'Add Item';
   }
+
+  modal.classList.remove('hidden');
 }
 
 // Close item modal
@@ -265,6 +301,7 @@ function closeItemModal() {
   const modal = document.getElementById('addItemModal');
   if (modal) {
     modal.classList.add('hidden');
+    editingItemId = null;
     
     // Reset form
     const form = document.getElementById('addItemForm');
@@ -368,7 +405,7 @@ function handleListFormSubmit(e) {
   }
 }
 
-// Handle add item form submission
+// Handle add item form submission (create or edit)
 function handleAddItemFormSubmit(e) {
   e.preventDefault(); // Prevent default form submission
   
@@ -408,21 +445,38 @@ function handleAddItemFormSubmit(e) {
     return;
   }
   
-  const newItem = {
-    id: Date.now(), // Unique ID
-    name: name,
-    quantity: quantity,
-    unit: unit || null,
-    price: price,
-    notes: notes || null,
-    completed: false,
-    addedDate: Date.now()
-  };
-  
   if (!list.items) {
     list.items = [];
   }
-  list.items.push(newItem);
+  
+  if (editingItemId) {
+    // EDITING EXISTING ITEM
+    const itemIndex = list.items.findIndex(item => item.id === editingItemId);
+    if (itemIndex !== -1) {
+      // Update existing item properties
+      list.items[itemIndex].name = name;
+      list.items[itemIndex].quantity = quantity;
+      list.items[itemIndex].unit = unit || null;
+      list.items[itemIndex].price = price;
+      list.items[itemIndex].notes = notes || null;
+      list.items[itemIndex].updatedDate = Date.now();
+    }
+  } else {
+    // CREATING NEW ITEM
+    const newItem = {
+      id: Date.now(), // Unique ID
+      name: name,
+      quantity: quantity,
+      unit: unit || null,
+      price: price,
+      notes: notes || null,
+      completed: false,
+      addedDate: Date.now()
+    };
+    
+    list.items.push(newItem);
+  }
+  
   list.updatedDate = Date.now();
   
   saveShoppingLists();
@@ -719,23 +773,95 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
-// Placeholder functions for item actions (to be implemented in next chunks)
+// ============================================
+// CHUNK 10: Item Management Functions
+// ============================================
+
+// Toggle item completed status
 function toggleItemComplete(itemId) {
-
-  console.log('Toggle item complete:', itemId);
+  if (!currentListId) return;
+  
+  const list = getListById(currentListId);
+  if (!list || !list.items) return;
+  
+  // Find the item
+  const item = list.items.find(i => i.id === itemId);
+  if (!item) return;
+  
+  // Toggle completed status
+  item.completed = !item.completed;
+  item.updatedDate = Date.now();
+  list.updatedDate = Date.now();
+  
+  // Save changes
+  saveShoppingLists();
+  
+  // Reload detail view to update UI
+  loadListDetail(currentListId);
 }
 
+// Edit an item (opens modal in edit mode)
 function editItem(itemId) {
-
-  console.log('Edit item:', itemId);
+  if (!currentListId) return;
+  
+  const list = getListById(currentListId);
+  if (!list || !list.items) return;
+  
+  // Verify item exists
+  const item = list.items.find(i => i.id === itemId);
+  if (!item) return;
+  
+  // Open modal in edit mode
+  openItemModal(itemId);
 }
 
+// Delete an item from the list
 function deleteItem(itemId) {
-
-  console.log('Delete item:', itemId);
+  if (!currentListId) return;
+  
+  // Confirm deletion
+  if (!confirm('Are you sure you want to delete this item?')) {
+    return;
+  }
+  
+  const list = getListById(currentListId);
+  if (!list || !list.items) return;
+  
+  // Remove item from array
+  const itemIndex = list.items.findIndex(i => i.id === itemId);
+  if (itemIndex === -1) return;
+  
+  list.items.splice(itemIndex, 1);
+  list.updatedDate = Date.now();
+  
+  // Save changes
+  saveShoppingLists();
+  
+  // Reload detail view to update UI
+  loadListDetail(currentListId);
 }
 
+// Delete an entire list
 function deleteList(listId) {
-
-  console.log('Delete list:', listId);
+  // Confirm deletion
+  if (!confirm('Are you sure you want to delete this list? This action cannot be undone.')) {
+    return;
+  }
+  
+  const list = getListById(listId);
+  if (!list) return;
+  
+  // Remove from Map
+  shoppingListsMap.delete(listId);
+  
+  // Save changes
+  saveShoppingLists();
+  
+  // If we're viewing this list, go back to lists view
+  if (currentListId === listId) {
+    showListsView();
+  }
+  
+  // Re-render lists
+  renderLists();
 }
