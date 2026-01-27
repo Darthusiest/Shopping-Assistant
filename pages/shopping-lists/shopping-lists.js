@@ -121,6 +121,17 @@ function setupActionReceivers() {
   if (addItemBtn) {
     addItemBtn.addEventListener('click', () => openItemModal());
   }
+
+  // List action buttons in detail view
+  const completeListBtn = document.getElementById('completeListBtn');
+
+  if (completeListBtn) {
+    completeListBtn.addEventListener('click', () => {
+      if (currentListId) {
+        completeList(currentListId);
+      }
+    });
+  }
 }
 
 // ============================================
@@ -190,18 +201,15 @@ function setActiveFilter(filter) {
 function updateTabCounts() {
   const allLists = getAllLists();
   const allCount = allLists.length;
-  const activeCount = allLists.filter(list => !list.completed && !list.saved).length;
-  const savedCount = allLists.filter(list => list.saved).length;
+  const activeCount = allLists.filter(list => !list.completed).length;
   const completedCount = allLists.filter(list => list.completed).length;
 
   const allCountEl = document.getElementById('allCount');
   const activeCountEl = document.getElementById('activeCount');
-  const savedCountEl = document.getElementById('savedCount');
   const completedCountEl = document.getElementById('completedCount');
 
   if (allCountEl) allCountEl.textContent = allCount;
   if (activeCountEl) activeCountEl.textContent = activeCount;
-  if (savedCountEl) savedCountEl.textContent = savedCount;
   if (completedCountEl) completedCountEl.textContent = completedCount;
 }
 
@@ -387,8 +395,7 @@ function handleListFormSubmit(e) {
       items: [], // Start with empty items array
       createdDate: Date.now(),
       updatedDate: Date.now(),
-      completed: false,
-      saved: false
+      completed: false
     };
     
     // Add to Map (O(1) operation)
@@ -499,9 +506,7 @@ function renderLists() {
   let filteredLists = getAllLists();
 
   if (currentFilter === 'active') {
-    filteredLists = filteredLists.filter(list => !list.completed && !list.saved);
-  } else if (currentFilter === 'saved') {
-    filteredLists = filteredLists.filter(list => list.saved);
+    filteredLists = filteredLists.filter(list => !list.completed);
   } else if (currentFilter === 'completed') {
     filteredLists = filteredLists.filter(list => list.completed);
   }
@@ -560,8 +565,6 @@ function createListCard(list) {
   let statusBadge = '';
   if (list.completed) {
     statusBadge = '<span class="list-status-badge completed">Completed</span>';
-  } else if (list.saved) {
-    statusBadge = '<span class="list-status-badge saved">Saved</span>';
   } else {
     statusBadge = '<span class="list-status-badge active">Active</span>';
   }
@@ -591,8 +594,27 @@ function createListCard(list) {
     </div>
 
     <div class="list-card-actions">
-      <button class="list-action-btn" data-action="edit" data-id="${list.id}">Edit</button>
-      <button class="list-action-btn delete" data-action="delete" data-id="${list.id}">Delete</button>
+      ${!list.completed ? `
+        <button class="list-action-btn" data-action="complete" data-id="${list.id}" title="Mark as completed">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M3 8 L6 11 L13 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span>Complete</span>
+        </button>
+      ` : ''}
+      <button class="list-action-btn" data-action="edit" data-id="${list.id}" title="Edit list">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M11 2 L14 5 L8 11 L5 11 L5 8 Z" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>Edit</span>
+      </button>
+      <button class="list-action-btn delete" data-action="delete" data-id="${list.id}" title="Delete list">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <line x1="4" y1="4" x2="12" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="12" y1="4" x2="4" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <span>Delete</span>
+      </button>
     </div>
   `;
 
@@ -603,23 +625,27 @@ function createListCard(list) {
     }
   });
 
-  // Add action button handlers
-  const editBtn = card.querySelector('[data-action="edit"]');
-  const deleteBtn = card.querySelector('[data-action="delete"]');
-
-  if (editBtn) {
-    editBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      openListModal(list.id);
-    });
-  }
-
-  if (deleteBtn) {
-    deleteBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      deleteList(list.id);
-    });
-  }
+  // Add action button handlers using event delegation
+  card.addEventListener('click', (e) => {
+    const actionBtn = e.target.closest('[data-action]');
+    if (!actionBtn || !actionBtn.dataset.action) return;
+    
+    e.stopPropagation();
+    const action = actionBtn.dataset.action;
+    const listId = parseInt(actionBtn.dataset.id);
+    
+    switch (action) {
+      case 'edit':
+        openListModal(listId);
+        break;
+      case 'delete':
+        deleteList(listId);
+        break;
+      case 'complete':
+        completeList(listId);
+        break;
+    }
+  });
 
   return card;
 }
@@ -639,11 +665,33 @@ function loadListDetail(listId) {
   // Update detail view header
   const detailListName = document.getElementById('detailListName');
   const detailListDescription = document.getElementById('detailListDescription');
+  const completeListBtn = document.getElementById('completeListBtn');
   
   if (detailListName) detailListName.textContent = list.name;
   if (detailListDescription) {
     detailListDescription.textContent = list.description || '';
     detailListDescription.style.display = list.description ? 'block' : 'none';
+  }
+
+  // Update action buttons visibility and text based on list status
+  if (completeListBtn) {
+    if (list.completed) {
+      completeListBtn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M3 8 L6 11 L13 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>Uncomplete</span>
+      `;
+      completeListBtn.style.display = 'flex';
+    } else {
+      completeListBtn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M3 8 L6 11 L13 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>Complete</span>
+      `;
+      completeListBtn.style.display = 'flex';
+    }
   }
 
   // Update stats
@@ -841,6 +889,40 @@ function deleteItem(itemId) {
   loadListDetail(currentListId);
 }
 
+// ============================================
+// CHUNK 11: List Actions (Complete, Delete)
+// ============================================
+
+// Mark list as completed or uncomplete it
+function completeList(listId) {
+  const list = getListById(listId);
+  if (!list) return;
+  
+  // Toggle completion if already completed, otherwise mark as completed
+  if (list.completed) {
+    // Uncomplete the list
+    list.completed = false;
+    delete list.completedDate;
+  } else {
+    // Mark as completed
+    list.completed = true;
+    list.completedDate = Date.now();
+  }
+  
+  list.updatedDate = Date.now();
+  
+  // Save changes
+  saveShoppingLists();
+  
+  // If viewing this list, refresh detail view
+  if (currentListId === listId) {
+    loadListDetail(listId);
+  }
+  
+  // Re-render lists to update UI
+  renderLists();
+}
+
 // Delete an entire list
 function deleteList(listId) {
   // Confirm deletion
@@ -865,3 +947,11 @@ function deleteList(listId) {
   // Re-render lists
   renderLists();
 }
+
+// ============================================
+// CHUNK 12: Item Actions Summary
+// ============================================
+// All item actions are already implemented:
+// - toggleItemComplete() - Check/uncheck item (CHUNK 10)
+// - editItem() - Edit item (CHUNK 10)
+// - deleteItem() - Delete item (CHUNK 10)

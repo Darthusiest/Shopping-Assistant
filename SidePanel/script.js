@@ -8,7 +8,6 @@ const pageRoutes = {
     'settings': 'pages/settings/settings.html',
     'shopping-lists': 'pages/shopping-lists/shopping-lists.html',
     'shopping-lists-all': 'pages/shopping-lists/shopping-lists.html',
-    'shopping-lists-saved': 'pages/shopping-lists/shopping-lists.html',
     'shopping-lists-active': 'pages/shopping-lists/shopping-lists.html'
 };
 
@@ -60,8 +59,7 @@ function loadPage(pageName) {
             // If it's a shopping list page, include filter information
             if (pageName.startsWith('shopping-lists')) {
                 const filter = pageName === 'shopping-lists-all' ? 'all' :
-                              pageName === 'shopping-lists-active' ? 'active' :
-                              pageName === 'shopping-lists-saved' ? 'saved' : 'all';
+                              pageName === 'shopping-lists-active' ? 'active' : 'all';
                 message.filter = filter;
                 message.pageType = 'shopping-lists';
             }
