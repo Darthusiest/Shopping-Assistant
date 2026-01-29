@@ -8,6 +8,10 @@ const { parseProductFromHtml } = require('./parseProduct.js');
 
 const PORT = process.env.PORT || 3000;
 
+// Optional third-party price API backup (Option 3). When our fetch+parse returns no price, we call this.
+const BACKUP_PRICE_API_URL = process.env.BACKUP_PRICE_API_URL || '';
+const BACKUP_PRICE_API_KEY = process.env.BACKUP_PRICE_API_KEY || '';
+
 // In-memory store: deviceId -> Map(productId -> product)
 const store = new Map();
 
@@ -97,13 +101,44 @@ function handleGetPrices(req, res) {
   send(res, 200, { products: list });
 }
 
+/**
+ * Call optional third-party price API (Option 3 backup).
+ * Expects API to accept product URL and return JSON with price (e.g. { price }, { currentPrice }, or { data: { price } }).
+ */
+async function fetchPriceFromBackupApi(productUrl) {
+  if (!BACKUP_PRICE_API_URL || !productUrl) return null;
+  try {
+    const apiUrl = new URL(BACKUP_PRICE_API_URL);
+    apiUrl.searchParams.set('url', productUrl);
+    if (BACKUP_PRICE_API_KEY) apiUrl.searchParams.set('key', BACKUP_PRICE_API_KEY);
+    const headers = { Accept: 'application/json' };
+    if (BACKUP_PRICE_API_KEY) headers['X-Api-Key'] = BACKUP_PRICE_API_KEY;
+    const res = await fetch(apiUrl.toString(), { headers });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const price = data?.price ?? data?.currentPrice ?? data?.data?.price ?? data?.data?.currentPrice;
+    if (price != null) {
+      const num = typeof price === 'number' ? price : parseFloat(String(price).replace(/,/g, ''));
+      return Number.isNaN(num) ? null : num;
+    }
+    return null;
+  } catch (err) {
+    console.error('Backup price API failed:', err.message);
+    return null;
+  }
+}
+
 async function fetchPriceForProduct(deviceId, productId, product) {
   if (!product.url || !product.url.startsWith('http')) return;
+  let newPrice = null;
   try {
     const res = await fetch(product.url, { redirect: 'follow', headers: { 'User-Agent': 'MarketShopper/1.0' } });
     const html = await res.text();
     const parsed = parseProductFromHtml(html, product.url);
-    const newPrice = parsed.price ? parseFloat(String(parsed.price).replace(/,/g, '')) : null;
+    newPrice = parsed.price ? parseFloat(String(parsed.price).replace(/,/g, '')) : null;
+    if ((newPrice == null || Number.isNaN(newPrice)) && BACKUP_PRICE_API_URL) {
+      newPrice = await fetchPriceFromBackupApi(product.url);
+    }
     if (newPrice != null && !Number.isNaN(newPrice)) {
       const prev = product.currentPrice;
       product.currentPrice = newPrice;
@@ -115,6 +150,18 @@ async function fetchPriceForProduct(deviceId, productId, product) {
     }
   } catch (err) {
     console.error(`Fetch failed for ${product.url}:`, err.message);
+    if (BACKUP_PRICE_API_URL) {
+      const backupPrice = await fetchPriceFromBackupApi(product.url);
+      if (backupPrice != null) {
+        const prev = product.currentPrice;
+        product.currentPrice = backupPrice;
+        product.lastChecked = Date.now();
+        if (prev !== backupPrice) {
+          product.priceHistory = product.priceHistory || [];
+          product.priceHistory.push({ price: backupPrice, date: Date.now() });
+        }
+      }
+    }
   }
 }
 
