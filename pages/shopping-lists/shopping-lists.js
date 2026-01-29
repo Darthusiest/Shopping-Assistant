@@ -947,11 +947,3 @@ function deleteList(listId) {
   // Re-render lists
   renderLists();
 }
-
-// ============================================
-// CHUNK 12: Item Actions Summary
-// ============================================
-// All item actions are already implemented:
-// - toggleItemComplete() - Check/uncheck item (CHUNK 10)
-// - editItem() - Edit item (CHUNK 10)
-// - deleteItem() - Delete item (CHUNK 10)

@@ -6,6 +6,10 @@ let currentFilter = 'all';
 let currentView = 'grid';
 let searchQuery = '';
 
+// Bulk selection state (delete multiple)
+let selectionMode = false;
+let selectedProductIds = new Set();
+
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
   initializePriceTracker();
@@ -22,6 +26,139 @@ function initializePriceTracker() {
     if (e.target.closest('.empty-state-add-btn')) {
       openAddProductModal();
     }
+  });
+}
+
+function getFilteredProducts() {
+  // Filter products
+  let filtered = [...trackedProducts];
+
+  // Apply search filter
+  if (searchQuery) {
+    filtered = filtered.filter(p =>
+      p.name.toLowerCase().includes(searchQuery) ||
+      (p.url && p.url.toLowerCase().includes(searchQuery))
+    );
+  }
+
+  // Apply status filter
+  if (currentFilter === 'active') {
+    filtered = filtered.filter(p => {
+      const priceHistory = p.priceHistory || [];
+      return priceHistory.length > 0;
+    });
+  } else if (currentFilter === 'alert') {
+    filtered = filtered.filter(p => {
+      if (!p.targetPrice) return false;
+      const currentPrice = parseFloat(p.currentPrice);
+      const targetPrice = parseFloat(p.targetPrice);
+      return currentPrice > targetPrice;
+    });
+  } else if (currentFilter === 'dropped') {
+    filtered = filtered.filter(p => {
+      const priceHistory = p.priceHistory || [];
+      if (priceHistory.length < 2) return false;
+      const latest = priceHistory[priceHistory.length - 1];
+      const previous = priceHistory[priceHistory.length - 2];
+      return latest.price < previous.price;
+    });
+  }
+
+  return filtered;
+}
+
+function setSelectionMode(enabled) {
+  selectionMode = enabled;
+
+  if (!selectionMode) {
+    selectedProductIds = new Set();
+  }
+
+  updateBulkActionsUI();
+  renderProducts();
+}
+
+function updateBulkActionsUI() {
+  const selectModeBtn = document.getElementById('selectModeBtn');
+  const selectAllBtn = document.getElementById('selectAllBtn');
+  const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+  const cancelSelectionBtn = document.getElementById('cancelSelectionBtn');
+
+  const selectedCount = selectedProductIds.size;
+
+  if (deleteSelectedBtn) {
+    deleteSelectedBtn.disabled = selectedCount === 0;
+    deleteSelectedBtn.textContent = `Delete (${selectedCount})`;
+  }
+
+  if (selectionMode) {
+    if (selectModeBtn) selectModeBtn.classList.add('hidden');
+    if (selectAllBtn) selectAllBtn.classList.remove('hidden');
+    if (deleteSelectedBtn) deleteSelectedBtn.classList.remove('hidden');
+    if (cancelSelectionBtn) cancelSelectionBtn.classList.remove('hidden');
+
+    // Toggle Select All label based on visible selection
+    if (selectAllBtn) {
+      const visible = getFilteredProducts();
+      const allVisibleSelected = visible.length > 0 && visible.every(p => selectedProductIds.has(Number(p.id)));
+      selectAllBtn.textContent = allVisibleSelected ? 'Unselect All' : 'Select All';
+    }
+  } else {
+    if (selectModeBtn) selectModeBtn.classList.remove('hidden');
+    if (selectAllBtn) selectAllBtn.classList.add('hidden');
+    if (deleteSelectedBtn) deleteSelectedBtn.classList.add('hidden');
+    if (cancelSelectionBtn) cancelSelectionBtn.classList.add('hidden');
+  }
+}
+
+function toggleProductSelected(productId, forceSelected = null) {
+  const id = Number(productId);
+  const currentlySelected = selectedProductIds.has(id);
+  const nextSelected = forceSelected === null ? !currentlySelected : Boolean(forceSelected);
+
+  if (nextSelected) selectedProductIds.add(id);
+  else selectedProductIds.delete(id);
+
+  updateBulkActionsUI();
+}
+
+function selectAllVisibleProducts() {
+  const visible = getFilteredProducts();
+  if (visible.length === 0) return;
+
+  const allVisibleSelected = visible.every(p => selectedProductIds.has(Number(p.id)));
+  if (allVisibleSelected) {
+    // Unselect visible
+    visible.forEach(p => selectedProductIds.delete(Number(p.id)));
+  } else {
+    // Select visible
+    visible.forEach(p => selectedProductIds.add(Number(p.id)));
+  }
+
+  updateBulkActionsUI();
+  renderProducts();
+}
+
+function deleteSelectedProducts() {
+  const idsToDelete = Array.from(selectedProductIds);
+  if (idsToDelete.length === 0) return;
+
+  if (!confirm(`Delete ${idsToDelete.length} selected product${idsToDelete.length === 1 ? '' : 's'}?`)) {
+    return;
+  }
+
+  trackedProducts = trackedProducts.filter(p => !selectedProductIds.has(Number(p.id)));
+
+  // Keep cache coherent
+  productsCache = trackedProducts;
+  lastLoadTime = Date.now();
+
+  saveTrackedProducts();
+  setSelectionMode(false);
+
+  requestAnimationFrame(() => {
+    updateStats();
+    renderProducts();
   });
 }
 
@@ -125,8 +262,55 @@ function setupEventListeners() {
       currentView = 'list';
       listViewBtn.classList.add('active');
       gridViewBtn.classList.remove('active');
-      productsContainer.className = 'products-container list-view';
+      productsContainer.className = `products-container list-view${selectionMode ? ' selection-mode' : ''}`;
       renderProducts();
+    });
+  }
+
+  // Bulk selection controls
+  const selectModeBtn = document.getElementById('selectModeBtn');
+  const selectAllBtn = document.getElementById('selectAllBtn');
+  const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+  const cancelSelectionBtn = document.getElementById('cancelSelectionBtn');
+
+  if (selectModeBtn) {
+    selectModeBtn.addEventListener('click', () => {
+      setSelectionMode(true);
+    });
+  }
+
+  if (cancelSelectionBtn) {
+    cancelSelectionBtn.addEventListener('click', () => {
+      setSelectionMode(false);
+    });
+  }
+
+  if (selectAllBtn) {
+    selectAllBtn.addEventListener('click', () => {
+      if (!selectionMode) setSelectionMode(true);
+      selectAllVisibleProducts();
+    });
+  }
+
+  if (deleteSelectedBtn) {
+    deleteSelectedBtn.addEventListener('click', () => {
+      deleteSelectedProducts();
+    });
+  }
+
+  // Checkbox selection handler (delegated)
+  if (productsContainer) {
+    productsContainer.addEventListener('change', (e) => {
+      const checkbox = e.target.closest('.product-select-checkbox');
+      if (!checkbox) return;
+      const card = checkbox.closest('.product-card');
+      if (!card) return;
+
+      const id = Number(card.dataset.id);
+      toggleProductSelected(id, checkbox.checked);
+
+      if (checkbox.checked) card.classList.add('selected');
+      else card.classList.remove('selected');
     });
   }
 }
@@ -209,39 +393,7 @@ function renderProducts() {
   const container = document.getElementById('productsContainer');
   if (!container) return;
 
-  // Filter products
-  let filtered = [...trackedProducts];
-
-  // Apply search filter
-  if (searchQuery) {
-    filtered = filtered.filter(p => 
-      p.name.toLowerCase().includes(searchQuery) ||
-      (p.url && p.url.toLowerCase().includes(searchQuery))
-    );
-  }
-
-  // Apply status filter
-  if (currentFilter === 'active') {
-    filtered = filtered.filter(p => {
-      const priceHistory = p.priceHistory || [];
-      return priceHistory.length > 0;
-    });
-  } else if (currentFilter === 'alert') {
-    filtered = filtered.filter(p => {
-      if (!p.targetPrice) return false;
-      const currentPrice = parseFloat(p.currentPrice);
-      const targetPrice = parseFloat(p.targetPrice);
-      return currentPrice > targetPrice;
-    });
-  } else if (currentFilter === 'dropped') {
-    filtered = filtered.filter(p => {
-      const priceHistory = p.priceHistory || [];
-      if (priceHistory.length < 2) return false;
-      const latest = priceHistory[priceHistory.length - 1];
-      const previous = priceHistory[priceHistory.length - 2];
-      return latest.price < previous.price;
-    });
-  }
+  const filtered = getFilteredProducts();
 
   // Use requestAnimationFrame for smooth rendering
   requestAnimationFrame(() => {
@@ -278,7 +430,7 @@ function renderProducts() {
     const fragment = document.createDocumentFragment();
     const tempDiv = document.createElement('div');
     const viewClass = currentView === 'grid' ? 'grid-view' : 'list-view';
-    tempDiv.className = `products-container ${viewClass}`;
+    tempDiv.className = `products-container ${viewClass}${selectionMode ? ' selection-mode' : ''}`;
     
     // Build HTML string efficiently
     tempDiv.innerHTML = filtered.map(product => createProductCard(product)).join('');
@@ -290,8 +442,10 @@ function renderProducts() {
 
     // Clear and append in one operation
     container.innerHTML = '';
-    container.className = `products-container ${viewClass}`;
+    container.className = `products-container ${viewClass}${selectionMode ? ' selection-mode' : ''}`;
     container.appendChild(fragment);
+
+    updateBulkActionsUI();
   });
 }
 
@@ -312,6 +466,25 @@ function setupProductCardDelegation() {
 function handleProductCardClick(e) {
   const card = e.target.closest('.product-card');
   if (!card) return;
+
+  // In selection mode: click anywhere on card toggles selection (except the checkbox itself)
+  if (selectionMode) {
+    // Let checkbox change handler handle checkbox interactions
+    if (e.target.closest('.product-select')) {
+      e.stopPropagation();
+      return;
+    }
+
+    e.stopPropagation();
+    const productId = Number(card.dataset.id);
+    toggleProductSelected(productId);
+
+    const checkbox = card.querySelector('.product-select-checkbox');
+    const isSelected = selectedProductIds.has(productId);
+    if (checkbox) checkbox.checked = isSelected;
+    card.classList.toggle('selected', isSelected);
+    return;
+  }
 
   if (e.target.closest('.product-actions')) {
     const deleteBtn = e.target.closest('.action-btn.delete');
@@ -350,12 +523,17 @@ function createProductCard(product) {
     };
   }
 
-  const cardClass = hasPriceDrop ? 'product-card price-dropped' : 
-                   hasAlert ? 'product-card alert-active' : 
+  const isSelected = selectionMode && selectedProductIds.has(Number(product.id));
+  const cardClass = hasPriceDrop ? 'product-card price-dropped' :
+                   hasAlert ? 'product-card alert-active' :
                    'product-card';
+  const selectedClass = isSelected ? ' selected' : '';
 
   return `
-    <div class="${cardClass}" data-id="${product.id}">
+    <div class="${cardClass}${selectedClass}" data-id="${product.id}">
+      <div class="product-select">
+        <input class="product-select-checkbox" type="checkbox" ${isSelected ? 'checked' : ''} aria-label="Select product">
+      </div>
       <div class="product-image-container">
         ${product.image ? 
           `<img src="${escapeHtml(product.image)}" alt="${escapeHtml(product.name)}" class="product-image" onerror="this.parentElement.innerHTML='<svg class=\\'product-image-placeholder\\' width=\\'80\\' height=\\'80\\' viewBox=\\'0 0 16 16\\' fill=\\'none\\' xmlns=\\'http://www.w3.org/2000/svg\\'><rect x=\\'2\\' y=\\'3\\' width=\\'12\\' height=\\'10\\' rx=\\'1\\' stroke=\\'currentColor\\' stroke-width=\\'1.5\\' fill=\\'none\\'/></svg>'">` :
@@ -464,6 +642,7 @@ function handleAddProduct(e) {
 function deleteProduct(productId) {
   if (confirm('Are you sure you want to delete this product from tracking?')) {
     trackedProducts = trackedProducts.filter(p => p.id !== parseInt(productId));
+    selectedProductIds.delete(Number(productId));
     saveTrackedProducts();
     loadTrackedProducts();
   }

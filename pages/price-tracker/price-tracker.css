@@ -196,6 +196,40 @@ body {
     margin-bottom: 20px;
 }
 
+.section-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.bulk-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.bulk-btn {
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-size: 13px;
+}
+
+.bulk-btn.danger {
+    color: #ef4444;
+    border-color: rgba(239, 68, 68, 0.35);
+    background: rgba(239, 68, 68, 0.08);
+}
+
+.bulk-btn.danger:hover {
+    background: rgba(239, 68, 68, 0.14);
+}
+
+.bulk-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .section-header h2 {
     font-size: 20px;
     font-weight: 600;
@@ -268,6 +302,40 @@ body {
     position: relative;
     overflow: hidden;
     will-change: transform;
+}
+
+.product-select {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+}
+
+.product-select input {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+.products-container.selection-mode .product-select {
+    display: flex;
+}
+
+.products-container.selection-mode .product-actions {
+    display: none;
+}
+
+.product-card.selected {
+    border-color: rgba(139, 92, 246, 0.9);
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.35);
 }
 
 .product-card:hover {
@@ -482,6 +550,10 @@ body {
 
 .modal-overlay.hidden {
     display: none;
+}
+
+.hidden {
+    display: none !important;
 }
 
 .modal-content {
