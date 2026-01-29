@@ -10,10 +10,91 @@ let searchQuery = '';
 let selectionMode = false;
 let selectedProductIds = new Set();
 
+// Fetched product image URL from "Fetch from URL" (Option 2/3 scrape)
+let fetchedProductImageUrl = null;
+
+// When set, the add-product modal is in edit mode for this product id
+let editingProductId = null;
+
+// Live price tracking backend (Option 2). Change for production.
+const LIVE_TRACKING_BACKEND_URL = 'http://localhost:3000';
+
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
   initializePriceTracker();
 });
+
+// --- Live tracking API (Option 2 backend)
+function getDeviceId() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(['liveTrackingDeviceId'], (result) => {
+      let id = result.liveTrackingDeviceId;
+      if (!id) {
+        id = 'dev-' + Date.now() + '-' + Math.random().toString(36).slice(2, 11);
+        chrome.storage.local.set({ liveTrackingDeviceId: id });
+      }
+      resolve(id);
+    });
+  });
+}
+
+function syncTrackProduct(product) {
+  if (!product || !product.url) return Promise.resolve();
+  return getDeviceId().then((deviceId) => {
+    return fetch(`${LIVE_TRACKING_BACKEND_URL}/api/track`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        deviceId,
+        productId: String(product.id),
+        url: product.url,
+        name: product.name,
+        currentPrice: product.currentPrice != null ? parseFloat(product.currentPrice) : null,
+      }),
+    }).catch(() => {});
+  });
+}
+
+function untrackProduct(product) {
+  if (!product) return Promise.resolve();
+  return getDeviceId().then((deviceId) => {
+    return fetch(`${LIVE_TRACKING_BACKEND_URL}/api/untrack`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId, productId: String(product.id) }),
+    }).catch(() => {});
+  });
+}
+
+function fetchPricesFromBackend() {
+  return getDeviceId()
+    .then((deviceId) => fetch(`${LIVE_TRACKING_BACKEND_URL}/api/prices?deviceId=${encodeURIComponent(deviceId)}`))
+    .then((res) => (res && res.ok ? res.json() : null))
+    .catch(() => null)
+    .then((data) => {
+      if (!data || !Array.isArray(data.products)) return;
+      const byId = {};
+      data.products.forEach((p) => { byId[p.productId] = p; });
+      let changed = false;
+      trackedProducts.forEach((product) => {
+        const remote = byId[String(product.id)];
+        if (!remote) return;
+        const newPrice = remote.currentPrice != null ? parseFloat(remote.currentPrice) : null;
+        if (newPrice == null || Number.isNaN(newPrice)) return;
+        const prev = parseFloat(product.currentPrice);
+        if (prev !== newPrice || (remote.priceHistory && remote.priceHistory.length !== (product.priceHistory || []).length)) {
+          product.currentPrice = newPrice;
+          product.priceHistory = Array.isArray(remote.priceHistory) ? remote.priceHistory : product.priceHistory || [];
+          changed = true;
+        }
+      });
+      if (changed) {
+        productsCache = trackedProducts;
+        saveTrackedProducts();
+        requestAnimationFrame(() => { updateStats(); renderProducts(); });
+      }
+    });
+}
 
 // Initialize all price tracker functionality
 function initializePriceTracker() {
@@ -216,6 +297,113 @@ function setupEventListeners() {
     addProductForm.addEventListener('submit', handleAddProduct);
   }
 
+  // Thumbnail file input: show preview when user selects an image
+  const productImageFile = document.getElementById('productImageFile');
+  const thumbnailPreview = document.getElementById('thumbnailPreview');
+  if (productImageFile && thumbnailPreview) {
+    productImageFile.addEventListener('change', () => {
+      fetchedProductImageUrl = null; // Clear fetched URL when user picks a file
+      const file = productImageFile.files[0];
+      thumbnailPreview.innerHTML = '';
+      if (file && file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = document.createElement('img');
+          img.src = e.target.result;
+          img.alt = 'Thumbnail preview';
+          thumbnailPreview.appendChild(img);
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+  }
+
+  // Fetch from URL: scrape product (Option 2 then Option 3 fallback). Result comes via a second message to avoid "message port closed".
+  const fetchProductUrlInput = document.getElementById('fetchProductUrl');
+  const fetchProductUrlBtn = document.getElementById('fetchProductUrlBtn');
+  const fetchProductStatus = document.getElementById('fetchProductStatus');
+  if (fetchProductUrlBtn && fetchProductUrlInput) {
+    fetchProductUrlBtn.addEventListener('click', () => {
+      const url = fetchProductUrlInput.value.trim();
+      if (!url || !url.startsWith('http')) {
+        if (fetchProductStatus) {
+          fetchProductStatus.textContent = 'Please enter a valid product URL.';
+          fetchProductStatus.className = 'fetch-status error';
+        }
+        return;
+      }
+      const requestId = Date.now();
+      if (fetchProductStatus) {
+        fetchProductStatus.textContent = 'Fetching… (a tab may open briefly if needed)';
+        fetchProductStatus.className = 'fetch-status loading';
+      }
+      const SCRAPE_RESULT_TIMEOUT_MS = 25000;
+      const timeoutId = setTimeout(() => {
+        chrome.runtime.onMessage.removeListener(onResult);
+        if (fetchProductStatus && fetchProductStatus.textContent.indexOf('Product details filled') === -1) {
+          fetchProductStatus.textContent = 'Request timed out. This site may block automated requests—try opening the product page in a tab, then Fetch again.';
+          fetchProductStatus.className = 'fetch-status error';
+        }
+      }, SCRAPE_RESULT_TIMEOUT_MS);
+      const onResult = (message) => {
+        if (message.action !== 'scrapeProductFromUrlResult' || message.requestId !== requestId) return;
+        clearTimeout(timeoutId);
+        chrome.runtime.onMessage.removeListener(onResult);
+        const response = { success: message.success, data: message.data };
+        if (!response.success || !response.data) {
+          if (fetchProductStatus) {
+            fetchProductStatus.textContent = 'Could not get product details from this URL. Try opening the page in a tab first, then use Fetch again.';
+            fetchProductStatus.className = 'fetch-status error';
+          }
+          return;
+        }
+        const d = response.data;
+        const productNameEl = document.getElementById('productName');
+        const productUrlEl = document.getElementById('productUrl');
+        const currentPriceEl = document.getElementById('currentPrice');
+        if (productNameEl) productNameEl.value = d.name || '';
+        if (productUrlEl) productUrlEl.value = d.url || url;
+        if (currentPriceEl && d.price) currentPriceEl.value = String(d.price).replace(/,/g, '');
+        fetchedProductImageUrl = d.image || null;
+        const thumb = document.getElementById('thumbnailPreview');
+        if (thumb) {
+          thumb.innerHTML = '';
+          if (fetchedProductImageUrl) {
+            const img = document.createElement('img');
+            img.src = fetchedProductImageUrl;
+            img.alt = 'Fetched thumbnail';
+            thumb.appendChild(img);
+          }
+        }
+        if (fetchProductStatus) {
+          fetchProductStatus.textContent = 'Product details filled. You can edit and add to tracker.';
+          fetchProductStatus.className = 'fetch-status';
+        }
+      };
+      chrome.runtime.onMessage.addListener(onResult);
+      chrome.runtime.sendMessage({ action: 'scrapeProductFromUrl', url, requestId }, (response) => {
+        if (chrome.runtime.lastError) {
+          chrome.runtime.onMessage.removeListener(onResult);
+          if (fetchProductStatus) {
+            fetchProductStatus.textContent = 'Error: ' + chrome.runtime.lastError.message;
+            fetchProductStatus.className = 'fetch-status error';
+          }
+          return;
+        }
+        // Background replies immediately with { pending: true, requestId }; result will arrive via onResult
+        if (!response || !response.pending) {
+          chrome.runtime.onMessage.removeListener(onResult);
+          if (response && response.success && response.data) {
+            onResult({ action: 'scrapeProductFromUrlResult', requestId: response.requestId, success: response.success, data: response.data });
+          } else if (fetchProductStatus) {
+            fetchProductStatus.textContent = 'Could not get product details from this URL.';
+            fetchProductStatus.className = 'fetch-status error';
+          }
+        }
+      });
+    });
+  }
+
   // Search Input with debouncing
   const searchInput = document.getElementById('searchInput');
   let searchTimeout;
@@ -334,13 +522,17 @@ function loadTrackedProducts(force = false) {
   }
 
   chrome.storage.local.get(['trackedProducts'], (result) => {
-    trackedProducts = result.trackedProducts || [];
+    trackedProducts = (result.trackedProducts || []).map((p) => ({
+      ...p,
+      trackLive: p.trackLive === true,
+    }));
     productsCache = trackedProducts;
     lastLoadTime = Date.now();
-    
+
     requestAnimationFrame(() => {
       updateStats();
       renderProducts();
+      fetchPricesFromBackend();
     });
   });
 }
@@ -486,14 +678,36 @@ function handleProductCardClick(e) {
     return;
   }
 
+  const trackLiveCheckbox = e.target.closest('.track-live-checkbox');
+  if (trackLiveCheckbox) {
+    e.stopPropagation();
+    const productId = trackLiveCheckbox.dataset.id;
+    const product = trackedProducts.find((p) => p.id === parseInt(productId, 10));
+    if (!product) return;
+    product.trackLive = !!trackLiveCheckbox.checked;
+    saveTrackedProducts();
+    if (product.trackLive && product.url) {
+      syncTrackProduct(product);
+    } else {
+      untrackProduct(product);
+    }
+    requestAnimationFrame(() => renderProducts());
+    return;
+  }
+
   if (e.target.closest('.product-actions')) {
+    e.stopPropagation();
     const deleteBtn = e.target.closest('.action-btn.delete');
     if (deleteBtn) {
-      e.stopPropagation();
       const productId = card.dataset.id;
       deleteProduct(productId);
+    } else {
+      const editBtn = e.target.closest('.action-btn');
+      if (editBtn) {
+        const productId = card.dataset.id;
+        openEditProductModal(productId);
+      }
     }
-    // Handle edit button if needed
   } else {
     const productId = card.dataset.id;
     showProductDetail(productId);
@@ -562,6 +776,10 @@ function createProductCard(product) {
           <span>Tracked ${getTimeAgo(new Date(product.addedDate || Date.now()))}</span>
           ${product.url ? `<a href="${escapeHtml(product.url)}" target="_blank" onclick="event.stopPropagation()" style="color: #8b5cf6;">View Product</a>` : ''}
         </div>
+        <label class="track-live-toggle" onclick="event.stopPropagation()">
+          <input type="checkbox" class="track-live-checkbox" data-id="${product.id}" ${product.trackLive ? 'checked' : ''} aria-label="Track price automatically">
+          <span>Track live</span>
+        </label>
       </div>
       <div class="product-actions">
         <button class="action-btn">Edit</button>
@@ -571,12 +789,63 @@ function createProductCard(product) {
   `;
 }
 
-// Open add product modal
+// Open add product modal (add mode)
 function openAddProductModal() {
+  editingProductId = null;
+  setAddProductModalMode('add');
+  const trackLiveCheckbox = document.getElementById('productTrackLive');
+  if (trackLiveCheckbox) trackLiveCheckbox.checked = false;
   const modal = document.getElementById('addProductModal');
   if (modal) {
     modal.classList.remove('hidden');
   }
+}
+
+// Open add product modal in edit mode with product data pre-filled
+function openEditProductModal(productId) {
+  const product = trackedProducts.find(p => p.id === parseInt(productId, 10));
+  if (!product) return;
+  editingProductId = product.id;
+  setAddProductModalMode('edit');
+  const productNameEl = document.getElementById('productName');
+  const productUrlEl = document.getElementById('productUrl');
+  const currentPriceEl = document.getElementById('currentPrice');
+  const targetPriceEl = document.getElementById('targetPrice');
+  const productNotesEl = document.getElementById('productNotes');
+  const thumbnailPreview = document.getElementById('thumbnailPreview');
+  const fetchProductUrl = document.getElementById('fetchProductUrl');
+  const fetchProductStatus = document.getElementById('fetchProductStatus');
+  if (productNameEl) productNameEl.value = product.name || '';
+  if (productUrlEl) productUrlEl.value = product.url || '';
+  if (currentPriceEl) currentPriceEl.value = product.currentPrice != null ? String(product.currentPrice) : '';
+  if (targetPriceEl) targetPriceEl.value = product.targetPrice != null ? String(product.targetPrice) : '';
+  if (productNotesEl) productNotesEl.value = product.notes || '';
+  fetchedProductImageUrl = product.image || null;
+  if (thumbnailPreview) {
+    thumbnailPreview.innerHTML = '';
+    if (product.image) {
+      const img = document.createElement('img');
+      img.src = product.image;
+      img.alt = 'Product thumbnail';
+      thumbnailPreview.appendChild(img);
+    }
+  }
+  if (fetchProductUrl) fetchProductUrl.value = '';
+  if (fetchProductStatus) {
+    fetchProductStatus.textContent = '';
+    fetchProductStatus.className = 'fetch-status';
+  }
+  const trackLiveCheckbox = document.getElementById('productTrackLive');
+  if (trackLiveCheckbox) trackLiveCheckbox.checked = !!product.trackLive;
+  const modal = document.getElementById('addProductModal');
+  if (modal) modal.classList.remove('hidden');
+}
+
+function setAddProductModalMode(mode) {
+  const titleEl = document.getElementById('addProductModalTitle');
+  const submitBtn = document.getElementById('addProductSubmitBtn');
+  if (titleEl) titleEl.textContent = mode === 'edit' ? 'Edit Product' : 'Add Product to Track';
+  if (submitBtn) submitBtn.textContent = mode === 'edit' ? 'Save Changes' : 'Add Product';
 }
 
 // Close add product modal
@@ -584,22 +853,83 @@ function closeAddProductModal() {
   const modal = document.getElementById('addProductModal');
   if (modal) {
     modal.classList.add('hidden');
+    editingProductId = null;
+    setAddProductModalMode('add');
     // Reset form
     const form = document.getElementById('addProductForm');
     if (form) form.reset();
+    // Clear file input and thumbnail preview
+    const productImageFile = document.getElementById('productImageFile');
+    const thumbnailPreview = document.getElementById('thumbnailPreview');
+    if (productImageFile) productImageFile.value = '';
+    if (thumbnailPreview) thumbnailPreview.innerHTML = '';
+    fetchedProductImageUrl = null;
+    const fetchProductStatus = document.getElementById('fetchProductStatus');
+    if (fetchProductStatus) {
+      fetchProductStatus.textContent = '';
+      fetchProductStatus.className = 'fetch-status';
+    }
   }
 }
 
-// Handle add product form submission with optimistic UI update
+// Resize image for thumbnail (keeps storage small). Returns a Promise<string> (data URL).
+function resizeImageForThumbnail(file) {
+  return new Promise((resolve, reject) => {
+    if (!file || !file.type.startsWith('image/')) {
+      resolve(null);
+      return;
+    }
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const MAX = 400;
+      let w = img.naturalWidth;
+      let h = img.naturalHeight;
+      if (w <= MAX && h <= MAX) {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+        return;
+      }
+      if (w > h) {
+        h = Math.round((h * MAX) / w);
+        w = MAX;
+      } else {
+        w = Math.round((w * MAX) / h);
+        h = MAX;
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      try {
+        resolve(canvas.toDataURL('image/jpeg', 0.82));
+      } catch (err) {
+        reject(err);
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Failed to load image'));
+    };
+    img.src = url;
+  });
+}
+
+// Handle add product form submission (create or update)
 function handleAddProduct(e) {
   e.preventDefault();
 
   const name = document.getElementById('productName').value.trim();
   const url = document.getElementById('productUrl').value.trim();
   const currentPrice = parseFloat(document.getElementById('currentPrice').value);
-  const targetPrice = document.getElementById('targetPrice').value ? 
+  const targetPrice = document.getElementById('targetPrice').value ?
     parseFloat(document.getElementById('targetPrice').value) : null;
-  const image = document.getElementById('productImage').value.trim();
+  const imageFileInput = document.getElementById('productImageFile');
+  const imageFile = imageFileInput && imageFileInput.files[0] ? imageFileInput.files[0] : null;
   const notes = document.getElementById('productNotes').value.trim();
 
   if (!name || isNaN(currentPrice)) {
@@ -607,45 +937,86 @@ function handleAddProduct(e) {
     return;
   }
 
-  const newProduct = {
-    id: Date.now(),
-    name: name,
-    url: url || null,
-    currentPrice: currentPrice,
-    targetPrice: targetPrice,
-    image: image || null,
-    notes: notes || null,
-    addedDate: Date.now(),
-    priceHistory: [{
-      price: currentPrice,
-      date: Date.now()
-    }]
-  };
+  const imageToUse = imageFile ? null : (fetchedProductImageUrl || null);
 
-  // Optimistic UI update - add immediately
-  trackedProducts.push(newProduct);
-  
-  // Close modal immediately for better UX
-  closeAddProductModal();
-  
-  // Update UI optimistically
-  requestAnimationFrame(() => {
-    updateStats();
-    renderProducts();
-  });
+  function applyImageAndFinish(imageDataUrl) {
+    const finalImage = imageDataUrl !== null ? imageDataUrl : imageToUse;
 
-  // Save to storage asynchronously (non-blocking)
-  saveTrackedProducts();
+    if (editingProductId != null) {
+      const product = trackedProducts.find(p => p.id === editingProductId);
+      if (!product) {
+        closeAddProductModal();
+        return;
+      }
+      const trackLiveCheckbox = document.getElementById('productTrackLive');
+      const trackLive = trackLiveCheckbox ? trackLiveCheckbox.checked : false;
+      product.name = name;
+      product.url = url || null;
+      product.targetPrice = targetPrice;
+      product.image = finalImage !== undefined && finalImage !== null ? finalImage : product.image;
+      product.notes = notes || null;
+      product.trackLive = !!trackLive;
+      const prevPrice = parseFloat(product.currentPrice);
+      if (currentPrice !== prevPrice) {
+        product.currentPrice = currentPrice;
+        if (!product.priceHistory) product.priceHistory = [];
+        product.priceHistory.push({ price: currentPrice, date: Date.now() });
+      }
+      closeAddProductModal();
+      requestAnimationFrame(() => {
+        updateStats();
+        renderProducts();
+      });
+      saveTrackedProducts();
+      if (product.trackLive && product.url) syncTrackProduct(product);
+      else untrackProduct(product);
+      return;
+    }
+
+    const newProduct = {
+      id: Date.now(),
+      name: name,
+      url: url || null,
+      currentPrice: currentPrice,
+      targetPrice: targetPrice,
+      image: finalImage || null,
+      notes: notes || null,
+      addedDate: Date.now(),
+      trackLive: false,
+      priceHistory: [{
+        price: currentPrice,
+        date: Date.now()
+      }]
+    };
+    trackedProducts.push(newProduct);
+    closeAddProductModal();
+    requestAnimationFrame(() => {
+      updateStats();
+      renderProducts();
+    });
+    saveTrackedProducts();
+  }
+
+  if (imageFile) {
+    resizeImageForThumbnail(imageFile)
+      .then((dataUrl) => applyImageAndFinish(dataUrl))
+      .catch(() => {
+        alert('Could not process the image. Try a different file.');
+      });
+  } else {
+    applyImageAndFinish(null);
+  }
 }
 
 // Delete product
 function deleteProduct(productId) {
-  if (confirm('Are you sure you want to delete this product from tracking?')) {
-    trackedProducts = trackedProducts.filter(p => p.id !== parseInt(productId));
-    selectedProductIds.delete(Number(productId));
-    saveTrackedProducts();
-    loadTrackedProducts();
-  }
+  if (!confirm('Are you sure you want to delete this product from tracking?')) return;
+  const product = trackedProducts.find(p => p.id === parseInt(productId, 10));
+  if (product && product.trackLive) untrackProduct(product);
+  trackedProducts = trackedProducts.filter(p => p.id !== parseInt(productId, 10));
+  selectedProductIds.delete(Number(productId));
+  saveTrackedProducts();
+  loadTrackedProducts();
 }
 
 // Show product detail modal
