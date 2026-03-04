@@ -13,8 +13,7 @@ chrome.runtime.onInstalled.addListener((details) => {
     chrome.storage.local.set({
       searchHistory: [],
       trackedProducts: [],
-      shoppingLists: [],
-      wishlist: []
+      shoppingLists: []
     });
   }
 });

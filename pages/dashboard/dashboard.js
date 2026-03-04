@@ -16,7 +16,7 @@ function initializeDashboard() {
 
 // Load and display statistics
 function loadStats() {
-  chrome.storage.local.get(['trackedProducts', 'searchHistory', 'wishlist', 'deals'], (result) => {
+  chrome.storage.local.get(['trackedProducts', 'searchHistory'], (result) => {
     // Tracked Products Count
     const tracked = result.trackedProducts || [];
     const trackedCountEl = document.getElementById('trackedCount');
@@ -29,21 +29,6 @@ function loadStats() {
     const searchesCountEl = document.getElementById('searchesCount');
     if (searchesCountEl) {
       searchesCountEl.textContent = history.length;
-    }
-
-    // Wishlist Count
-    const wishlist = result.wishlist || [];
-    const wishlistCountEl = document.getElementById('wishlistCount');
-    if (wishlistCountEl) {
-      wishlistCountEl.textContent = wishlist.length;
-    }
-
-    // Deals Count
-    const deals = result.deals || [];
-    const dealsCount = deals.length || history.filter(item => item.hasDeals).length;
-    const dealsCountEl = document.getElementById('dealsCount');
-    if (dealsCountEl) {
-      dealsCountEl.textContent = dealsCount;
     }
   });
 }

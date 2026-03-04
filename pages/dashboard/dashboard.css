@@ -77,16 +77,6 @@ body {
     color: #3b82f6;
 }
 
-.stat-icon.deals {
-    background: linear-gradient(135deg, rgba(249, 115, 22, 0.2) 0%, rgba(234, 88, 12, 0.3) 100%);
-    color: #f97316;
-}
-
-.stat-icon.wishlist {
-    background: linear-gradient(135deg, rgba(236, 72, 153, 0.2) 0%, rgba(219, 39, 119, 0.3) 100%);
-    color: #ec4899;
-}
-
 .stat-icon.searches {
     background: linear-gradient(135deg, rgba(139, 92, 246, 0.2) 0%, rgba(124, 58, 237, 0.3) 100%);
     color: #8b5cf6;

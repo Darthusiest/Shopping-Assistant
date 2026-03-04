@@ -161,24 +161,16 @@ function loadRecentSearches() {
   });
 }
 
-// Load status counts (tracked products, deals)
+// Load status counts (tracked products)
 function loadStatusCounts() {
-  chrome.storage.local.get(['trackedProducts', 'searchHistory'], (result) => {
+  chrome.storage.local.get(['trackedProducts'], (result) => {
     const tracked = result.trackedProducts || [];
-    const history = result.searchHistory || [];
     
     // Count active tracked products
     const trackedCount = tracked.length;
     const trackedCountEl = document.getElementById('trackedCount');
     if (trackedCountEl) {
       trackedCountEl.textContent = trackedCount;
-    }
-    
-    // Count recent deals (searches with price drops - simplified)
-    const dealsCount = history.filter(item => item.results && item.results.length > 0).length;
-    const dealsCountEl = document.getElementById('dealsCount');
-    if (dealsCountEl) {
-      dealsCountEl.textContent = dealsCount > 0 ? dealsCount : '0';
     }
   });
 }
