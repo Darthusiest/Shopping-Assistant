@@ -239,14 +239,6 @@ function setupQuickActions() {
   }
 
   // View All Buttons
-  const viewHistoryBtn = document.getElementById('viewHistoryBtn');
-  if (viewHistoryBtn) {
-    viewHistoryBtn.addEventListener('click', () => {
-      // Navigate to history page
-      console.log('Navigate to history');
-    });
-  }
-
   const viewTrackerBtn = document.getElementById('viewTrackerBtn');
   if (viewTrackerBtn) {
     viewTrackerBtn.addEventListener('click', () => {

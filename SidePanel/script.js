@@ -2,7 +2,6 @@
 const pageRoutes = {
     'dashboard': 'pages/dashboard/dashboard.html',
     'price-tracker': 'pages/price-tracker/price-tracker.html',
-    'history': 'pages/history/history.html',
     'shopping-lists': 'pages/shopping-lists/shopping-lists.html',
     'shopping-lists-all': 'pages/shopping-lists/shopping-lists.html',
     'shopping-lists-active': 'pages/shopping-lists/shopping-lists.html'
